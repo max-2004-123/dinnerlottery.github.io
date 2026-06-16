@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Food Slots | 今晚吃什麼？</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <div class="eyebrow"><span class="dot"></span> FOOD SLOTS</div>
+      <h1>今晚吃什麼？</h1>
+      <p class="subtitle">先抓附近店家，再分析料理類型，最後抽出三個今晚可選的料理方向。之後再把真正拉霸動畫補上。</p>
+    </section>
+
+    <section class="card section" aria-live="polite">
+      <div class="section-title">
+        <h2>定位功能</h2>
+        <span>自動取得目前位置</span>
+      </div>
+
+      <div class="status-row">
+        <div class="status-label">定位狀態</div>
+        <div id="statusPill" class="status-pill loading">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="statusText">正在取得位置</span>
+        </div>
+      </div>
+
+      <p id="message" class="message">請允許瀏覽器定位權限，系統會自動取得附近店家資料。</p>
+
+      <div id="locationData" class="grid" hidden>
+        <div class="field">
+          <span class="field-label">Latitude</span>
+          <div id="latitude" class="field-value">-</div>
+        </div>
+        <div class="field">
+          <span class="field-label">Longitude</span>
+          <div id="longitude" class="field-value">-</div>
+        </div>
+        <div class="field">
+          <span class="field-label">Accuracy</span>
+          <div id="accuracy" class="field-value">-</div>
+        </div>
+      </div>
+
+      <div class="hint">定位功能需要 HTTPS 或 localhost 才能正常使用</div>
+    </section>
+
+    <section class="card section">
+      <div class="section-title">
+        <h2>資料分析</h2>
+        <span>Google Places → Overpass → mock</span>
+      </div>
+
+      <div id="placesStatus" class="hint" style="margin-top:0;">等待定位完成後搜尋附近店家...</div>
+      <p id="analysisSummary" class="analysis-summary">尚未取得附近店家資料</p>
+      <div id="analysisGrid" class="analysis-grid"></div>
+    </section>
+
+    <section class="card section">
+      <div class="section-title">
+        <h2>API 測試狀態</h2>
+        <span>Google Places Debug</span>
+      </div>
+
+      <p class="analysis-summary">用來快速判斷目前卡在哪一層：網址、定位、API Key、Google Places 請求與錯誤類型。</p>
+
+      <div class="debug-grid">
+        <div class="debug-item">
+          <span class="debug-label">目前網址 protocol</span>
+          <strong id="debugProtocol" class="debug-value">-</strong>
+        </div>
+        <div class="debug-item">
+          <span class="debug-label">目前 hostname</span>
+          <strong id="debugHostname" class="debug-value">-</strong>
+        </div>
+        <div class="debug-item">
+          <span class="debug-label">是否為 localhost / 127.0.0.1</span>
+          <strong id="debugLocalhost" class="debug-value">-</strong>
+        </div>
+        <div class="debug-item">
+          <span class="debug-label">是否支援 Geolocation</span>
+          <strong id="debugGeolocationSupport" class="debug-value">-</strong>
+        </div>
+        <div class="debug-item">
+          <span class="debug-label">是否成功取得定位</span>
+          <strong id="debugLocation" class="debug-value">-</strong>
+        </div>
+        <div class="debug-item">
+          <span class="debug-label">API Key 是否已填入</span>
+          <strong id="debugApiKey" class="debug-value">-</strong>
+        </div>
+        <div class="debug-item debug-wide">
+          <span class="debug-label">Google Places API 測試結果</span>
+          <strong id="debugPlacesResult" class="debug-value">尚未執行</strong>
+        </div>
+        <div class="debug-item debug-wide">
+          <span class="debug-label">錯誤訊息</span>
+          <pre id="debugError" class="debug-pre">-</pre>
+        </div>
+      </div>
+
+      <div class="debug-actions">
+        <button id="debugTestBtn" class="btn btn-secondary" type="button">重新測試 API</button>
+      </div>
+    </section>
+
+    <section class="card section">
+      <div class="section-title">
+        <h2>Food Slots</h2>
+        <span>料理類型拉霸</span>
+      </div>
+
+      <div class="slots-grid">
+        <div id="slot1" class="slot-card slot-empty" aria-label="第一個料理選項">
+          <div class="slot-index">❶</div>
+          <div class="slot-content">
+            <span class="slot-emoji">?</span>
+            <span class="slot-label">等待抽選</span>
+          </div>
+        </div>
+        <div id="slot2" class="slot-card slot-empty" aria-label="第二個料理選項">
+          <div class="slot-index">❷</div>
+          <div class="slot-content">
+            <span class="slot-emoji">?</span>
+            <span class="slot-label">等待抽選</span>
+          </div>
+        </div>
+        <div id="slot3" class="slot-card slot-empty" aria-label="第三個料理選項">
+          <div class="slot-index">❸</div>
+          <div class="slot-content">
+            <span class="slot-emoji">?</span>
+            <span class="slot-label">等待抽選</span>
+          </div>
+        </div>
+      </div>
+
+      <button id="generateBtn" class="btn btn-primary" type="button" disabled>今晚吃什麼</button>
+    </section>
+
+    <section class="card section">
+      <div class="section-title">
+        <h2>今晚推薦</h2>
+        <span>點選料理查看店家</span>
+      </div>
+
+      <div id="recommendationsList" class="recommendation-row"></div>
+
+      <div class="active-category-panel">
+        <div class="active-category-head">
+          <div class="active-category-title">
+            <span id="activeCategoryEmoji" class="active-category-emoji">🍜</span>
+            <span id="activeCategoryTitle">尚未抽選</span>
+          </div>
+          <span id="activeCategoryMeta" class="active-category-meta">請先按下「今晚吃什麼」</span>
+        </div>
+        <div id="activePlacesList" class="places-list"></div>
+      </div>
+    </section>
+
+    <section class="card section">
+      <div class="section-title">
+        <h2>我的收藏</h2>
+        <span id="favoritesCount">0 筆</span>
+      </div>
+      <div id="favoritesList" class="favorites-list"></div>
+    </section>
+
+    <footer class="footer">
+      Food Slots 先完成資料流與 UI，下一階段再加入真正的拉霸動畫。
+    </footer>
+  </main>
+</body>
+</html>
