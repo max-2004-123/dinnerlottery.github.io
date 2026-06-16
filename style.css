@@ -517,14 +517,52 @@ h1 {
   z-index: 1;
 }
 
-.slot-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.slot-window {
   flex: 1;
   min-width: 0;
   position: relative;
   z-index: 1;
+  height: 48px; /* 固定視窗高度 */
+  overflow: hidden;
+}
+
+.slot-reel {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+
+.slot-reel-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px; /* 與視窗等高 */
+  flex-shrink: 0;
+}
+
+.slot-card.is-spinning .slot-reel {
+  filter: blur(1px);
+}
+
+.slot-card.is-stopped .slot-reel {
+  filter: none;
+}
+
+.slot-card.is-final {
+  border-color: rgba(216, 192, 141, 0.5);
+  box-shadow:
+    0 18px 40px rgba(216, 192, 141, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-reel {
+    transition-duration: 0.1s !important;
+  }
+  .slot-card.is-spinning .slot-reel {
+    filter: none;
+  }
 }
 
 .slot-emoji {
