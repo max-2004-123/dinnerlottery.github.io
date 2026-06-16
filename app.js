@@ -1,4 +1,4 @@
-const GOOGLE_API_KEY = "YOUR_API_KEY_HERE";
+const GOOGLE_API_KEY = "AIzaSyAlYjXrvlLKC1pclVSDxMbYjfoVoBN1slg";
 
 const GOOGLE_PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchNearby';
 const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
