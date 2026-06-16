@@ -2,23 +2,64 @@ const GOOGLE_API_KEY = "AIzaSyAlYjXrvlLKC1pclVSDxMbYjfoVoBN1slg";
 
 const GOOGLE_PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchNearby';
 const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
-const SEARCH_RADIUS = 1000;
+const SEARCH_RADIUS = 3000;
 const MAX_WHEEL_PLACES = 24;
 const STORAGE_KEYS = {
   favorites: 'food-slots-favorites'
 };
+const ALLOWED_RESTAURANT_PRIMARY_TYPES = new Set([
+  'restaurant',
+  'american_restaurant',
+  'asian_restaurant',
+  'barbecue_restaurant',
+  'brazilian_restaurant',
+  'breakfast_restaurant',
+  'brunch_restaurant',
+  'buffet_restaurant',
+  'chinese_restaurant',
+  'fast_food_restaurant',
+  'french_restaurant',
+  'greek_restaurant',
+  'hamburger_restaurant',
+  'hot_pot_restaurant',
+  'indian_restaurant',
+  'indonesian_restaurant',
+  'italian_restaurant',
+  'japanese_restaurant',
+  'korean_restaurant',
+  'lebanese_restaurant',
+  'mediterranean_restaurant',
+  'mexican_restaurant',
+  'middle_eastern_restaurant',
+  'pizza_restaurant',
+  'ramen_restaurant',
+  'seafood_restaurant',
+  'spanish_restaurant',
+  'steak_house',
+  'sushi_restaurant',
+  'taiwanese_restaurant',
+  'thai_restaurant',
+  'turkish_restaurant',
+  'vegan_restaurant',
+  'vegetarian_restaurant',
+  'vietnamese_restaurant'
+]);
 
+function isActualRestaurant(place) {
+  const primaryType = `${place?.primaryType || ''}`.toLowerCase();
+  return ALLOWED_RESTAURANT_PRIMARY_TYPES.has(primaryType);
+}
 const FOOD_CATEGORY_DEFS = [
-  { id: 'ramen', label: '拉麵', emoji: '🍜', keywords: ['拉麵', 'ramen', '麵屋', '豚骨', 'soba', 'udon', '拉面'] },
-  { id: 'hotpot', label: '火鍋', emoji: '🍲', keywords: ['火鍋', 'hotpot', 'shabu', '鍋物', '麻辣鍋'] },
-  { id: 'bbq', label: '燒肉', emoji: '🍖', keywords: ['燒肉', 'bbq', 'yakiniku', '烤肉', 'grill', '焼肉'] },
-  { id: 'curry', label: '咖哩', emoji: '🍛', keywords: ['咖哩', 'curry', '咖喱'] },
-  { id: 'burger', label: '漢堡', emoji: '🍔', keywords: ['漢堡', 'burger', 'hamburger'] },
-  { id: 'sushi', label: '壽司', emoji: '🍣', keywords: ['壽司', 'sushi', '鮨', '迴轉壽司', '回轉壽司'] },
-  { id: 'coffee', label: '咖啡', emoji: '☕', keywords: ['咖啡', 'coffee', 'cafe', '甜點', '下午茶'] },
-  { id: 'snack', label: '小吃', emoji: '🥟', keywords: ['小吃', 'snack', '麵線', '滷味', '鹽酥雞', '夜市', '點心'] },
-  { id: 'fried', label: '炸物', emoji: '🍗', keywords: ['炸物', '炸', 'fried', '雞排', '鹹酥雞'] },
-  { id: 'taiwanese', label: '台式料理', emoji: '🥘', keywords: ['台式', '台菜', 'taiwanese', '便當', '熱炒', '滷肉飯', '米粉'] }
+  { id: 'ramen', label: '拉麵', emoji: '🍜' },
+  { id: 'hotpot', label: '火鍋', emoji: '🍲' },
+  { id: 'bbq', label: '燒肉', emoji: '🍖' },
+  { id: 'curry', label: '咖哩', emoji: '🍛' },
+  { id: 'burger', label: '漢堡', emoji: '🍔' },
+  { id: 'sushi', label: '壽司', emoji: '🍣' },
+  { id: 'snack', label: '小吃', emoji: '🥟' },
+  { id: 'fried', label: '炸物', emoji: '🍗' },
+  { id: 'taiwanese', label: '台式料理', emoji: '🥘' },
+  { id: 'other', label: '其他餐廳', emoji: '🍽️' }
 ];
 
 const mockPlaces = [
@@ -240,9 +281,9 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 function buildOverpassQuery(lat, lng) {
   return `[out:json][timeout:25];
 (
-  node["amenity"~"restaurant|cafe|fast_food|food_court"](around:${SEARCH_RADIUS},${lat},${lng});
-  way["amenity"~"restaurant|cafe|fast_food|food_court"](around:${SEARCH_RADIUS},${lat},${lng});
-  relation["amenity"~"restaurant|cafe|fast_food|food_court"](around:${SEARCH_RADIUS},${lat},${lng});
+  node["amenity"~"restaurant|fast_food"](around:${SEARCH_RADIUS},${lat},${lng});
+  way["amenity"~"restaurant|fast_food"](around:${SEARCH_RADIUS},${lat},${lng});
+  relation["amenity"~"restaurant|fast_food"](around:${SEARCH_RADIUS},${lat},${lng});
 );
 out center tags;`;
 }
@@ -352,72 +393,65 @@ function inferFoodCategory(place) {
   const name = `${place?.name || ''}`.toLowerCase();
   const primaryType = `${place?.primaryType || ''}`.toLowerCase();
   const primaryTypeDisplayName = `${place?.primaryTypeDisplayName || ''}`.toLowerCase();
-  const rawTypes = Array.isArray(place?.rawTypes) ? place.rawTypes.map((item) => String(item).toLowerCase()) : [];
-  const combined = `${name} ${primaryType} ${primaryTypeDisplayName} ${rawTypes.join(' ')}`;
+  const rawTypes = Array.isArray(place?.rawTypes)
+    ? place.rawTypes.map((item) => String(item).toLowerCase())
+    : [];
+  const combined = `${name} ${primaryTypeDisplayName} ${rawTypes.join(' ')}`;
 
+  // Google 的明確餐廳主類型優先，避免只靠店名猜。
+  const primaryTypeCategoryMap = {
+    ramen_restaurant: 'ramen',
+    hot_pot_restaurant: 'hotpot',
+    barbecue_restaurant: 'bbq',
+    hamburger_restaurant: 'burger',
+    sushi_restaurant: 'sushi',
+    taiwanese_restaurant: 'taiwanese'
+  };
+
+  const mappedCategoryId = primaryTypeCategoryMap[primaryType];
+  if (mappedCategoryId) {
+    return FOOD_CATEGORY_DEFS.find((category) => category.id === mappedCategoryId);
+  }
+
+  // Google 只標成一般 restaurant 時，才用名稱與顯示類型補充分類。
   const keywordRules = [
-    { keywords: ['旭集', '饗食天堂', '漢來海港', 'buffet', '自助餐'], id: 'buffet', label: '自助餐', emoji: '🍽️' },
-    { keywords: ['拉麵', 'ramen'], id: 'ramen', label: '拉麵', emoji: '🍜' },
-    { keywords: ['壽司', 'sushi', '鮨'], id: 'sushi', label: '壽司', emoji: '🍣' },
-    { keywords: ['燒肉', 'yakiniku', 'grill'], id: 'bbq', label: '燒肉', emoji: '🥩' },
-    { keywords: ['火鍋', 'hotpot', '涮涮鍋', 'shabu'], id: 'hotpot', label: '火鍋', emoji: '🍲' },
-    { keywords: ['咖啡', 'cafe', 'coffee'], id: 'coffee', label: '咖啡', emoji: '☕' },
-    { keywords: ['咖哩', 'curry'], id: 'curry', label: '咖哩', emoji: '🍛' },
-    { keywords: ['漢堡', 'burger'], id: 'burger', label: '漢堡', emoji: '🍔' },
-    { keywords: ['甜點', 'dessert', 'cake', 'bakery'], id: 'dessert', label: '甜點', emoji: '🍰' },
-    { keywords: ['炸雞', '鹽酥雞', 'fried chicken'], id: 'fried', label: '炸物', emoji: '🍗' }
+    { id: 'ramen', keywords: ['拉麵', 'ramen', '麵屋', '豚骨', 'ラーメン'] },
+    { id: 'hotpot', keywords: ['火鍋', '鍋物', '麻辣鍋', '涮涮鍋', 'hotpot', 'hot pot', 'shabu'] },
+    { id: 'bbq', keywords: ['燒肉', '焼肉', 'yakiniku', '烤肉'] },
+    { id: 'curry', keywords: ['咖哩', '咖喱', 'curry'] },
+    { id: 'burger', keywords: ['漢堡', 'burger', 'hamburger'] },
+    { id: 'sushi', keywords: ['壽司', '鮨', 'sushi', '迴轉壽司', '回轉壽司'] },
+    { id: 'fried', keywords: ['鹽酥雞', '鹹酥雞', '雞排', '炸雞', 'fried chicken'] },
+    { id: 'snack', keywords: ['小吃', '麵線', '滷味', '肉圓', '蚵仔煎', '臭豆腐', '刈包'] },
+    { id: 'taiwanese', keywords: ['台菜', '台式', '滷肉飯', '魯肉飯', '便當', '熱炒'] }
   ];
 
   for (const rule of keywordRules) {
     if (rule.keywords.some((keyword) => combined.includes(keyword.toLowerCase()))) {
-      return rule;
+      return FOOD_CATEGORY_DEFS.find((category) => category.id === rule.id);
     }
   }
 
-  const fallbackRules = [
-    { keyword: 'cafe', id: 'coffee', label: '咖啡', emoji: '☕' },
-    { keyword: 'bakery', id: 'dessert', label: '甜點', emoji: '🍰' },
-    { keyword: 'bar', id: 'bar', label: '酒吧', emoji: '🍺' },
-    { keyword: 'meal_takeaway', id: 'takeaway', label: '外帶', emoji: '🥡' },
-    { keyword: 'fast_food', id: 'fast_food', label: '速食', emoji: '🍟' },
-    { keyword: 'restaurant', id: 'restaurant', label: '餐廳', emoji: '🍽️' }
-  ];
-
-  for (const rule of fallbackRules) {
-    if (primaryType.includes(rule.keyword) || rawTypes.includes(rule.keyword) || combined.includes(rule.keyword)) {
-      return rule;
-    }
-  }
-
-  return {
-    id: 'restaurant',
-    label: '餐廳',
-    emoji: '🍽️'
-  };
-}
-
-function inferFoodCategoryId(place) {
-  return inferFoodCategory({
-    name: place.name,
-    primaryType: place.type,
-    rawTypes: [place.type],
-    primaryTypeDisplayName: place.cuisine || ''
-  }).id;
+  return FOOD_CATEGORY_DEFS.find((category) => category.id === 'other');
 }
 
 function buildFoodCategories(places) {
   const categories = createEmptyFoodCategories();
 
   for (const place of places) {
-    const categoryId = inferFoodCategoryId(place);
-    const category = categories.find((item) => item.id === categoryId) || categories[categories.length - 1];
-    const enrichedPlace = {
+    // 直接使用 normalize 階段保存的分類；沒有時才重新推論。
+    const inferred = place.category
+      ? FOOD_CATEGORY_DEFS.find((category) => category.id === place.category)
+      : inferFoodCategory(place);
+    const category = inferred || FOOD_CATEGORY_DEFS.find((item) => item.id === 'other');
+    const target = categories.find((item) => item.id === category.id);
+
+    target.places.push({
       ...place,
       category: category.label,
       categoryId: category.id,
       categoryEmoji: category.emoji
-    };
-    category.places.push(enrichedPlace);
+    });
   }
 
   for (const category of categories) {
@@ -495,7 +529,7 @@ async function loadNearbyPlacesGoogle(lat, lng) {
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri'
       },
       body: JSON.stringify({
-        includedTypes: ['restaurant', 'cafe', 'meal_takeaway'],
+        includedPrimaryTypes: [...ALLOWED_RESTAURANT_PRIMARY_TYPES],
         maxResultCount: 20,
         locationRestriction: {
           circle: {
@@ -503,7 +537,7 @@ async function loadNearbyPlacesGoogle(lat, lng) {
               latitude: lat,
               longitude: lng
             },
-            radius: 1000
+            radius: 3000
           }
         }
       })
@@ -517,9 +551,11 @@ async function loadNearbyPlacesGoogle(lat, lng) {
     const rawPlaces = Array.isArray(data.places) ? data.places : [];
     const places = rawPlaces
       .map((place) => normalizeGooglePlace(place, lat, lng))
-      .filter((place) => place && place.name);
-
-    console.log(places);
+      .filter((place) =>
+        place &&
+        place.name &&
+        isActualRestaurant(place)
+      );
 
     if (!places.length) {
       setPlacesStatus('Google Places 沒有資料，改用 Overpass');
@@ -671,7 +707,7 @@ async function runGooglePlacesDebugTest() {
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri'
       },
       body: JSON.stringify({
-        includedTypes: ['restaurant', 'cafe', 'meal_takeaway'],
+        includedPrimaryTypes: [...ALLOWED_RESTAURANT_PRIMARY_TYPES],
         maxResultCount: 5,
         locationRestriction: {
           circle: {
