@@ -501,6 +501,16 @@ h1 {
 
 .slot-card.filled {
   border-color: rgba(216, 192, 141, 0.34);
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.slot-card.filled:hover {
+  transform: translateY(-2px);
+  border-color: rgba(216, 192, 141, 0.5);
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .slot-card.slot-empty {
@@ -579,6 +589,11 @@ h1 {
   line-height: 1.2;
   letter-spacing: -0.02em;
   color: #f7f1e5;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .slot-count {

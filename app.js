@@ -807,7 +807,7 @@ function renderSlots() {
       slotEl.innerHTML = `
         <div class="slot-index">${slotLabelNumbers[index]}</div>
         <div class="slot-window">
-          <div class="slot-reel" style="transform: translateY(0); transition: none;">
+          <div class="slot-reel" style="transform: translate3d(0, 0, 0); transition: none;">
             <div class="slot-reel-item">
               <span class="slot-emoji">?</span>
               <span class="slot-label">等待抽選</span>
@@ -818,11 +818,12 @@ function renderSlots() {
       return;
     }
 
-    slotEl.className = 'slot-card filled is-stopped';
+    slotEl.className = 'slot-card filled is-stopped is-final';
+    slotEl.dataset.categoryId = category.id;
     slotEl.innerHTML = `
       <div class="slot-index">${slotLabelNumbers[index]}</div>
       <div class="slot-window">
-        <div class="slot-reel" style="transform: translateY(0); transition: none;">
+        <div class="slot-reel" style="transform: translate3d(0, 0, 0); transition: none;">
           <div class="slot-reel-item">
             <span class="slot-emoji">${escapeHtml(category.emoji)}</span>
             <span class="slot-label">${escapeHtml(category.label)}</span>
@@ -997,12 +998,14 @@ function spinReel(slotEl, availableCategories, targetCategory, duration) {
     if (!reel) { resolve(); return; }
 
     reel.style.transition = 'none';
-    reel.style.transform = 'translateY(0)';
+    reel.style.transform = 'translate3d(0, 0, 0)';
+    reel.style.willChange = 'transform';
 
-    const rounds = 5 + Math.floor(Math.random() * 3);
+    const itemCount = Math.floor(Math.random() * 8) + 18;
     const items = [];
-    for (let i = 0; i < rounds; i++) {
-      items.push(...shuffle(availableCategories.slice()));
+    for (let i = 0; i < itemCount - 1; i++) {
+      const randomCat = availableCategories[Math.floor(Math.random() * availableCategories.length)];
+      items.push(randomCat);
     }
     items.push(targetCategory);
 
@@ -1014,28 +1017,32 @@ function spinReel(slotEl, availableCategories, targetCategory, duration) {
       </div>
     `).join('');
 
-    const itemHeight = 48;
+    const firstItem = reel.querySelector('.slot-reel-item');
+    const itemHeight = firstItem ? firstItem.offsetHeight : 48;
     const targetTranslateY = -(items.length - 1) * itemHeight;
-
-    void reel.offsetHeight;
 
     const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const actualDuration = isReducedMotion ? 100 : duration;
 
-    reel.style.transition = `transform ${actualDuration}ms cubic-bezier(0.2, 0.8, 0.1, 1.1)`;
-    reel.style.transform = `translateY(${targetTranslateY}px)`;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        reel.style.transition = `transform ${actualDuration}ms cubic-bezier(0.2, 0.8, 0.1, 1.1)`;
+        reel.style.transform = `translate3d(0, ${targetTranslateY}px, 0)`;
 
-    let resolved = false;
-    const finish = () => {
-      if (resolved) return;
-      resolved = true;
-      slotEl.classList.remove('is-spinning');
-      slotEl.classList.add('is-stopped');
-      resolve();
-    };
+        let resolved = false;
+        const finish = () => {
+          if (resolved) return;
+          resolved = true;
+          slotEl.classList.remove('is-spinning');
+          slotEl.classList.add('is-stopped');
+          reel.style.willChange = 'auto';
+          resolve();
+        };
 
-    reel.addEventListener('transitionend', finish, { once: true });
-    setTimeout(finish, actualDuration + 100);
+        reel.addEventListener('transitionend', finish, { once: true });
+        setTimeout(finish, actualDuration + 100);
+      });
+    });
   });
 }
 
@@ -1072,6 +1079,7 @@ async function pickThreeCategories() {
 
   isSpinning = true;
   generateBtn.disabled = true;
+  generateBtn.textContent = '抽選中...';
 
   // 1. 準備可供抽選的 12 個主要分類 (排除 'other_restaurant' 作為抽選選項以保持體驗優良)
   const pool = FOOD_CATEGORY_DEFS.filter(c => c.id !== 'other_restaurant');
@@ -1094,8 +1102,8 @@ async function pickThreeCategories() {
 
     // 2. 播放拉霸動畫
     await Promise.all([
-      spinReel(slotEls[0], pool, results[0], 1400),
-      spinReel(slotEls[1], pool, results[1], 1900),
+      spinReel(slotEls[0], pool, results[0], 1600),
+      spinReel(slotEls[1], pool, results[1], 2000),
       spinReel(slotEls[2], pool, results[2], 2400)
     ]);
 
@@ -1167,6 +1175,7 @@ async function pickThreeCategories() {
   } finally {
     isSpinning = false;
     generateBtn.disabled = false;
+    generateBtn.textContent = '今晚吃什麼';
   }
 }
 
@@ -1280,6 +1289,19 @@ function formatRating(rating) {
 }
 
 function bindInteractiveLists() {
+  const slotsGrid = document.querySelector('.slots-grid');
+  if (slotsGrid) {
+    slotsGrid.addEventListener('click', (event) => {
+      if (isSpinning) return;
+      const slotCard = event.target.closest('.slot-card.filled');
+      if (!slotCard) return;
+      const categoryId = slotCard.dataset.categoryId;
+      if (categoryId) {
+        selectCategory(categoryId);
+      }
+    });
+  }
+
   analysisGrid.addEventListener('click', (event) => {
     const button = event.target.closest('[data-action="select-category"]');
     if (!button || button.disabled) return;
