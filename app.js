@@ -1,11 +1,11 @@
 const GOOGLE_API_KEY = "AIzaSyAlYjXrvlLKC1pclVSDxMbYjfoVoBN1slg";
 
-const GOOGLE_PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchNearby';
+const GOOGLE_PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
 const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
-const SEARCH_RADIUS = 3000;
+const SEARCH_RADIUS = 600;
 
 // 十、依新架構改名與限制
-const MAX_CACHED_PLACES_PER_CATEGORY = 20;
+const MAX_CACHED_PLACES_PER_CATEGORY = 60;
 const MAX_VISIBLE_PLACES_PER_CATEGORY = 6;
 
 const STORAGE_KEYS = {
@@ -92,62 +92,55 @@ const FOOD_CATEGORY_DEFS = [
 // 三、建立分類搜尋設定 (所有 Type 均符合官方 API 表格)
 const CATEGORY_SEARCH_CONFIG = {
   ramen: {
-    includedPrimaryTypes: ['ramen_restaurant', 'japanese_restaurant', 'restaurant'],
+    textQueries: ['拉麵', '日式拉麵', '豚骨拉麵', '麵屋'],
     fallbackKeywords: ['拉麵', 'ramen', 'ラーメン', '麵屋', '豚骨']
   },
   hotpot: {
-    includedPrimaryTypes: ['hot_pot_restaurant', 'restaurant'],
+    textQueries: ['火鍋', '鍋物', '麻辣鍋', '涮涮鍋'],
     fallbackKeywords: ['火鍋', '鍋物', '麻辣鍋', '涮涮鍋', 'hotpot', 'hot pot', 'shabu']
   },
   bbq: {
-    includedPrimaryTypes: ['barbecue_restaurant', 'restaurant'],
+    textQueries: ['燒肉', '日式燒肉', '烤肉'],
     fallbackKeywords: ['燒肉', '焼肉', 'yakiniku', '烤肉']
   },
   burger: {
-    includedPrimaryTypes: ['hamburger_restaurant', 'fast_food_restaurant', 'restaurant'],
+    textQueries: ['漢堡', '美式漢堡', '漢堡店'],
     fallbackKeywords: ['漢堡', 'burger', 'hamburger']
   },
   sushi: {
-    includedPrimaryTypes: ['sushi_restaurant', 'japanese_restaurant', 'restaurant'],
+    textQueries: ['壽司', '日本料理壽司', '迴轉壽司'],
     fallbackKeywords: ['壽司', '鮨', 'sushi', '迴轉壽司', '回轉壽司']
   },
   taiwanese: {
-    includedPrimaryTypes: ['taiwanese_restaurant', 'restaurant'],
+    textQueries: ['台式料理', '台灣小吃', '滷肉飯', '熱炒'],
     fallbackKeywords: ['滷肉飯', '魯肉飯', '便當', '熱炒', '排骨飯', '雞肉飯']
   },
   japanese: {
-    includedPrimaryTypes: ['japanese_restaurant', 'restaurant'],
+    textQueries: ['日式料理', '日本料理', '定食', '丼飯'],
     fallbackKeywords: ['日式', '定食', '丼飯', '烏龍麵', '天婦羅', '居酒屋', '和食']
   },
   chinese: {
-    includedPrimaryTypes: ['chinese_restaurant', 'restaurant'],
+    textQueries: ['中式料理', '中餐廳', '川菜', '粵菜'],
     fallbackKeywords: ['川菜', '粵菜', '小籠包', '點心', '水餃', '麵食', '牛肉麵']
   },
   korean: {
-    includedPrimaryTypes: ['korean_restaurant', 'restaurant'],
+    textQueries: ['韓式料理', '韓國料理', '韓式餐廳'],
     fallbackKeywords: ['韓式', '泡菜', '石鍋', '銅盤', '韓國']
   },
   southeast_asian: {
-    includedPrimaryTypes: ['thai_restaurant', 'vietnamese_restaurant', 'indonesian_restaurant', 'restaurant'],
+    textQueries: ['東南亞料理', '泰式料理', '越南料理', '印尼料理'],
     fallbackKeywords: ['泰式', '越式', '印尼', '咖哩', 'curry', '河粉', '打拋']
   },
   western: {
-    includedPrimaryTypes: [
-      'italian_restaurant',
-      'french_restaurant',
-      'american_restaurant',
-      'pizza_restaurant',
-      'steak_house',
-      'restaurant'
-    ],
+    textQueries: ['西式料理', '義式料理', '美式餐廳', '牛排', '義大利麵'],
     fallbackKeywords: ['義式', '披薩', 'pizza', '義大利麵', '牛排', 'steak', 'pasta', '法式']
   },
   fast_food: {
-    includedPrimaryTypes: ['fast_food_restaurant', 'restaurant'],
+    textQueries: ['速食', '炸雞', '鹹酥雞', '雞排'],
     fallbackKeywords: ['炸雞', '麥當勞', '肯德基', '摩斯', '鹹酥雞', '鹽酥雞', '雞排']
   },
   other_restaurant: {
-    includedPrimaryTypes: ['restaurant'],
+    textQueries: ['餐廳', '附近餐廳'],
     fallbackKeywords: []
   }
 };
@@ -387,17 +380,22 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 }
 
 // 供 Debug 整合測試與通用搜尋使用
-function buildGoogleNearbyRequest(lat, lng, maxResultCount, radius) {
+function buildGoogleTextSearchRequest(query, lat, lng) {
   return {
-    includedPrimaryTypes: [...GOOGLE_RESTAURANT_PRIMARY_TYPES],
-    maxResultCount,
-    locationRestriction: {
+    textQuery: query,
+    includedType: 'restaurant',
+    strictTypeFiltering: true,
+    languageCode: 'zh-TW',
+    regionCode: 'TW',
+    pageSize: 20,
+    rankPreference: 'RELEVANCE',
+    locationBias: {
       circle: {
         center: {
           latitude: lat,
           longitude: lng
         },
-        radius
+        radius: SEARCH_RADIUS
       }
     }
   };
@@ -574,6 +572,64 @@ async function ensureFallbackPool(lat, lng) {
 }
 
 // 四、建立單一分類搜尋函式 (Core of Two-Stage Architecture)
+async function fetchGoogleTextSearch(query, lat, lng, pageToken = '') {
+  const requestBody = {
+    textQuery: query,
+    includedType: 'restaurant',
+    strictTypeFiltering: true,
+    languageCode: 'zh-TW',
+    regionCode: 'TW',
+    pageSize: 20,
+    rankPreference: 'RELEVANCE',
+    locationBias: {
+      circle: {
+        center: {
+          latitude: lat,
+          longitude: lng
+        },
+        radius: SEARCH_RADIUS
+      }
+    }
+  };
+
+  if (pageToken) {
+    requestBody.pageToken = pageToken;
+  }
+
+  const response = await fetch(GOOGLE_PLACES_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': GOOGLE_API_KEY,
+      'X-Goog-FieldMask':
+        'places.id,' +
+        'places.displayName,' +
+        'places.formattedAddress,' +
+        'places.location,' +
+        'places.rating,' +
+        'places.userRatingCount,' +
+        'places.types,' +
+        'places.primaryType,' +
+        'places.primaryTypeDisplayName,' +
+        'places.googleMapsUri,' +
+        'nextPageToken'
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    let errorDetails = '';
+    try {
+      errorDetails = await response.text();
+    } catch (_) {
+      errorDetails = '';
+    }
+    throw new Error(`Google Places Text Search HTTP ${response.status}: ${errorDetails}`);
+  }
+
+  return response.json();
+}
+
 async function searchPlacesByCategory(categoryId, lat, lng) {
   const config = CATEGORY_SEARCH_CONFIG[categoryId];
   if (!config) {
@@ -599,65 +655,41 @@ async function searchPlacesByCategory(categoryId, lat, lng) {
     return categoryPlaces;
   }
 
-  // 3. 呼叫 Google Places Nearby Search (New)
-  try {
-    const response = await fetch(GOOGLE_PLACES_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri'
-      },
-      body: JSON.stringify({
-        includedPrimaryTypes: config.includedPrimaryTypes,
-        maxResultCount: MAX_CACHED_PLACES_PER_CATEGORY,
-        rankPreference: 'DISTANCE',
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: lat,
-              longitude: lng
-            },
-            radius: SEARCH_RADIUS
-          }
-        }
-      })
-    });
+  // 3. 呼叫 Google Places Text Search (New)
+  const allRawPlaces = [];
+  const randomizedQueries = randomizePlaces(config.textQueries).slice(0, 2);
+  let hasSuccess = false;
 
-    if (!response.ok) {
-      throw new Error(`Google Places HTTP ${response.status}`);
+  for (const query of randomizedQueries) {
+    let pageToken = '';
+
+    try {
+      for (let page = 0; page < 2; page += 1) {
+        const data = await fetchGoogleTextSearch(query, lat, lng, pageToken);
+        hasSuccess = true;
+
+        if (Array.isArray(data.places)) {
+          allRawPlaces.push(...data.places);
+        }
+
+        pageToken = data.nextPageToken || '';
+        if (!pageToken) {
+          break;
+        }
+      }
+    } catch (err) {
+      console.error(`Google Places Search query "${query}" failed:`, err);
+      // 不要因為一個失敗就中斷其他 query
     }
 
-    const data = await response.json();
-    const rawPlaces = data.places || [];
+    // 如果已經取得足夠店家，可以提早結束，不過考慮到後續還要過濾距離去重，這裡可以暫不嚴格提早結束
+    if (allRawPlaces.length >= 60) {
+      break;
+    }
+  }
 
-    // 正規化、驗證與歸類
-    const results = rawPlaces
-      .map((place) => normalizeGooglePlace(place, lat, lng))
-      .filter((place) => place && isActualRestaurant(place))
-      .map(assignFoodCategory)
-      // 確保只保留符合當前 categoryId 的店家
-      .filter((place) => place.category === categoryId);
-
-    // 去除重複店名或 placeId
-    const seen = new Set();
-    const uniqueResults = results.filter((place) => {
-      const uniqueId = place.placeId || place.name;
-      if (seen.has(uniqueId)) return false;
-      seen.add(uniqueId);
-      return true;
-    });
-
-    // 存入快取
-    categoryPlaceCache.set(cacheKey, {
-      places: uniqueResults,
-      expiresAt: Date.now() + 5 * 60 * 1000
-    });
-
-    return uniqueResults;
-  } catch (err) {
-    console.error(`Google Places Search for category ${categoryId} failed`, err);
-    // Google API 失敗，降級使用 Overpass Fallback
+  if (!hasSuccess && allRawPlaces.length === 0) {
+    // 所有 query 都失敗，使用 Fallback
     await ensureFallbackPool(lat, lng);
     const categoryPlaces = fallbackPlacesPool.filter((p) => p.category === categoryId);
     categoryPlaceCache.set(cacheKey, {
@@ -666,6 +698,58 @@ async function searchPlacesByCategory(categoryId, lat, lng) {
     });
     return categoryPlaces;
   }
+
+  // 4. 正規化、驗證與歸類
+  const categoryDef = FOOD_CATEGORY_DEFS.find((cat) => cat.id === categoryId) ||
+    FOOD_CATEGORY_DEFS.find((cat) => cat.id === 'other_restaurant');
+
+  const results = allRawPlaces
+    .map((place) => normalizeGooglePlace(place, lat, lng))
+    .filter((place) => {
+      return (
+        place &&
+        typeof place.distance === 'number' &&
+        place.distance <= SEARCH_RADIUS
+      );
+    })
+    .filter((place) => isActualRestaurant(place))
+    .map(place => ({
+      ...place,
+      category: categoryId,
+      categoryLabel: categoryDef.label,
+      categoryEmoji: categoryDef.emoji
+    }));
+
+  // 5. 去除重複
+  const seenPlaceIds = new Set();
+  const seenFallbackKeys = new Set();
+
+  const uniqueResults = results.filter((place) => {
+    if (place.placeId) {
+      if (seenPlaceIds.has(place.placeId)) {
+        return false;
+      }
+      seenPlaceIds.add(place.placeId);
+      return true;
+    }
+
+    const fallbackKey = `${place.name}|${place.address}`.trim().toLowerCase();
+    if (seenFallbackKeys.has(fallbackKey)) {
+      return false;
+    }
+    seenFallbackKeys.add(fallbackKey);
+    return true;
+  });
+
+  // 6. 存入快取
+  const finalResults = randomizePlaces(uniqueResults).slice(0, MAX_CACHED_PLACES_PER_CATEGORY);
+
+  categoryPlaceCache.set(cacheKey, {
+    places: finalResults,
+    expiresAt: Date.now() + 5 * 60 * 1000
+  });
+
+  return finalResults;
 }
 
 function sortPlaces(a, b) {
@@ -1323,13 +1407,13 @@ async function runGooglePlacesDebugTest() {
     const lat = position.coords.latitude;
     const lng = position.coords.longitude;
 
-    const requestBody = buildGoogleNearbyRequest(lat, lng, 5, 1000);
+    const requestBody = buildGoogleTextSearchRequest('餐廳', lat, lng);
     const response = await fetch(GOOGLE_PLACES_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_API_KEY,
-        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.types,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri,nextPageToken'
       },
       body: JSON.stringify(requestBody)
     });
