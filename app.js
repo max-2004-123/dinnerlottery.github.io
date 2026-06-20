@@ -2,7 +2,74 @@ const GOOGLE_API_KEY = "AIzaSyAlYjXrvlLKC1pclVSDxMbYjfoVoBN1slg";
 
 const GOOGLE_PLACES_ENDPOINT = 'https://places.googleapis.com/v1/places:searchText';
 const OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
-const SEARCH_RADIUS = 600;
+
+const DEFAULT_SEARCH_RADIUS = 600;
+const LUNCH_SEARCH_RADIUS = 800;
+
+let mealModeOverride = null;
+
+function isLunchTime(date = new Date()) {
+  const totalMinutes =
+    date.getHours() * 60 +
+    date.getMinutes();
+
+  return (
+    totalMinutes >= 11 * 60 &&
+    totalMinutes < 14 * 60 + 30
+  );
+}
+
+function getEffectiveMealMode(date = new Date()) {
+  if (mealModeOverride === 'lunch') {
+    return 'lunch';
+  }
+
+  if (mealModeOverride === 'default') {
+    return 'default';
+  }
+
+  return isLunchTime(date)
+    ? 'lunch'
+    : 'default';
+}
+
+let currentMealMode = getEffectiveMealMode();
+
+function getCurrentSearchRadius() {
+  return currentMealMode === 'lunch'
+    ? LUNCH_SEARCH_RADIUS
+    : DEFAULT_SEARCH_RADIUS;
+}
+
+const LUNCH_CATEGORY_IDS = [
+  'ramen',
+  'burger',
+  'sushi',
+  'taiwanese',
+  'japanese',
+  'chinese',
+  'korean',
+  'southeast_asian',
+  'western',
+  'fast_food',
+  'other_restaurant'
+];
+
+function getAvailableCategoryDefs() {
+  if (currentMealMode !== 'lunch') {
+    return FOOD_CATEGORY_DEFS;
+  }
+
+  return FOOD_CATEGORY_DEFS.filter((category) =>
+    LUNCH_CATEGORY_IDS.includes(category.id)
+  );
+}
+
+let refreshIntervalId = null;
+
+function refreshMealModeByTime() {
+  applyMealMode(getEffectiveMealMode());
+}
 
 // 十、依新架構改名與限制
 const MAX_CACHED_PLACES_PER_CATEGORY = 60;
@@ -86,7 +153,16 @@ const FOOD_CATEGORY_DEFS = [
   { id: 'southeast_asian', label: '東南亞料理', emoji: '🍛' },
   { id: 'western', label: '西式料理', emoji: '🍝' },
   { id: 'fast_food', label: '速食', emoji: '🍟' },
-  { id: 'other_restaurant', label: '其他餐廳', emoji: '🍽️' }
+  {
+    id: 'other_restaurant',
+    label: '其他餐廳',
+    emoji: '🍽️',
+    keywords: [
+      'restaurant',
+      '餐廳',
+      '料理'
+    ]
+  }
 ];
 
 // 三、建立分類搜尋設定 (所有 Type 均符合官方 API 表格)
@@ -207,7 +283,7 @@ function getCategoryCacheKey(categoryId, lat, lng) {
     categoryId,
     lat.toFixed(3),
     lng.toFixed(3),
-    SEARCH_RADIUS
+    getCurrentSearchRadius()
   ].join('|');
 }
 
@@ -395,18 +471,19 @@ function buildGoogleTextSearchRequest(query, lat, lng) {
           latitude: lat,
           longitude: lng
         },
-        radius: SEARCH_RADIUS
+        radius: getCurrentSearchRadius()
       }
     }
   };
 }
 
 function buildOverpassQuery(lat, lng) {
+  const radius = getCurrentSearchRadius();
   return `[out:json][timeout:25];
 (
-  node["amenity"~"restaurant|fast_food"](around:${SEARCH_RADIUS},${lat},${lng});
-  way["amenity"~"restaurant|fast_food"](around:${SEARCH_RADIUS},${lat},${lng});
-  relation["amenity"~"restaurant|fast_food"](around:${SEARCH_RADIUS},${lat},${lng});
+  node["amenity"~"restaurant|fast_food"](around:${radius},${lat},${lng});
+  way["amenity"~"restaurant|fast_food"](around:${radius},${lat},${lng});
+  relation["amenity"~"restaurant|fast_food"](around:${radius},${lat},${lng});
 );
 out center tags;`;
 }
@@ -587,7 +664,7 @@ async function fetchGoogleTextSearch(query, lat, lng, pageToken = '') {
           latitude: lat,
           longitude: lng
         },
-        radius: SEARCH_RADIUS
+        radius: getCurrentSearchRadius()
       }
     }
   };
@@ -709,7 +786,7 @@ async function searchPlacesByCategory(categoryId, lat, lng) {
       return (
         place &&
         typeof place.distance === 'number' &&
-        place.distance <= SEARCH_RADIUS
+        place.distance <= getCurrentSearchRadius()
       );
     })
     .filter((place) => isActualRestaurant(place))
@@ -764,10 +841,11 @@ function sortPlaces(a, b) {
 }
 
 function resultSectionReset() {
+  const isLunch = currentMealMode === 'lunch';
   activeCategoryEmoji.textContent = '🍜';
   activeCategoryTitle.textContent = '尚未抽選';
-  activeCategoryMeta.textContent = '請先按下「今晚吃什麼」';
-  activePlacesList.innerHTML = '<div class="empty-state">目前尚未抽出料理，先按下「今晚吃什麼」吧。</div>';
+  activeCategoryMeta.textContent = isLunch ? '請先按下「午餐吃什麼」' : '請先按下「今晚吃什麼」';
+  activePlacesList.innerHTML = `<div class="empty-state">目前尚未抽出料理，先按下「${isLunch ? '午餐吃什麼' : '今晚吃什麼'}」吧。</div>`;
   recommendationsList.innerHTML = '';
 }
 
@@ -796,38 +874,65 @@ function renderAnalysisGrid() {
     .join('');
 }
 
-function renderSlots() {
+function renderSlots(forceRender = false) {
   const slotLabelNumbers = ['❶', '❷', '❸'];
+
   slotEls.forEach((slotEl, index) => {
-    if (isSpinning) return;
+    if (isSpinning && !forceRender) return;
 
     const category = selectedCategories[index];
+
     if (!category) {
       slotEl.className = 'slot-card slot-empty';
+      slotEl.removeAttribute('data-category-id');
+
       slotEl.innerHTML = `
         <div class="slot-index">${slotLabelNumbers[index]}</div>
+
         <div class="slot-window">
-          <div class="slot-reel" style="transform: translate3d(0, 0, 0); transition: none;">
+          <div
+            class="slot-reel"
+            style="transform: translate3d(0, 0, 0); transition: none;"
+          >
             <div class="slot-reel-item">
               <span class="slot-emoji">?</span>
-              <span class="slot-label">等待抽選</span>
+
+              <span class="slot-text">
+                <span class="slot-label">等待抽選</span>
+              </span>
             </div>
           </div>
         </div>
       `;
+
       return;
     }
 
     slotEl.className = 'slot-card filled is-stopped is-final';
     slotEl.dataset.categoryId = category.id;
+
     slotEl.innerHTML = `
       <div class="slot-index">${slotLabelNumbers[index]}</div>
+
       <div class="slot-window">
-        <div class="slot-reel" style="transform: translate3d(0, 0, 0); transition: none;">
+        <div
+          class="slot-reel"
+          style="transform: translate3d(0, 0, 0); transition: none;"
+        >
           <div class="slot-reel-item">
-            <span class="slot-emoji">${escapeHtml(category.emoji)}</span>
-            <span class="slot-label">${escapeHtml(category.label)}</span>
-            <span class="slot-count" style="margin-left: 8px;">${category.places.length} 間</span>
+            <span class="slot-emoji">
+              ${escapeHtml(category.emoji)}
+            </span>
+
+            <span class="slot-text">
+              <span class="slot-label">
+                ${escapeHtml(category.label)}
+              </span>
+
+              <span class="slot-count">
+                ${category.places.length} 間
+              </span>
+            </span>
           </div>
         </div>
       </div>
@@ -837,7 +942,8 @@ function renderSlots() {
 
 function renderRecommendations() {
   if (!selectedCategories.length) {
-    recommendationsList.innerHTML = '<div class="empty-state">先按下「今晚吃什麼」，系統會抽出三個不同料理類型。</div>';
+    const isLunch = currentMealMode === 'lunch';
+    recommendationsList.innerHTML = `<div class="empty-state">先按下「${isLunch ? '午餐吃什麼' : '今晚吃什麼'}」，系統會抽出三個不同料理類型。</div>`;
     return;
   }
 
@@ -856,11 +962,12 @@ function renderRecommendations() {
 }
 
 function renderActiveCategory() {
+  const isLunch = currentMealMode === 'lunch';
   if (!activeCategoryId) {
     activeCategoryEmoji.textContent = '🍜';
     activeCategoryTitle.textContent = '尚未抽選';
-    activeCategoryMeta.textContent = '請先按下「今晚吃什麼」';
-    activePlacesList.innerHTML = '<div class="empty-state">目前尚未抽出料理，先按下「今晚吃什麼」吧。</div>';
+    activeCategoryMeta.textContent = isLunch ? '請先按下「午餐吃什麼」' : '請先按下「今晚吃什麼」';
+    activePlacesList.innerHTML = `<div class="empty-state">目前尚未抽出料理，先按下「${isLunch ? '午餐吃什麼' : '今晚吃什麼'}」吧。</div>`;
     return;
   }
 
@@ -868,7 +975,7 @@ function renderActiveCategory() {
   if (!category) {
     activeCategoryEmoji.textContent = '🍜';
     activeCategoryTitle.textContent = '尚未抽選';
-    activeCategoryMeta.textContent = '請先按下「今晚吃什麼」';
+    activeCategoryMeta.textContent = isLunch ? '請先按下「午餐吃什麼」' : '請先按下「今晚吃什麼」';
     activePlacesList.innerHTML = '<div class="empty-state">找不到這個料理分類，請重新抽選一次。</div>';
     return;
   }
@@ -1009,13 +1116,25 @@ function spinReel(slotEl, availableCategories, targetCategory, duration) {
     }
     items.push(targetCategory);
 
-    reel.innerHTML = items.map(cat => `
-      <div class="slot-reel-item">
-        <span class="slot-emoji">${escapeHtml(cat.emoji)}</span>
-        <span class="slot-label">${escapeHtml(cat.label)}</span>
-        <span class="slot-count" style="margin-left: 8px;">- 間</span>
-      </div>
-    `).join('');
+    reel.innerHTML = items
+      .map((cat) => `
+        <div class="slot-reel-item">
+          <span class="slot-emoji">
+            ${escapeHtml(cat.emoji)}
+          </span>
+
+          <span class="slot-text">
+            <span class="slot-label">
+              ${escapeHtml(cat.label)}
+            </span>
+
+            <span class="slot-count">
+              抽選中
+            </span>
+          </span>
+        </div>
+      `)
+      .join('');
 
     const firstItem = reel.querySelector('.slot-reel-item');
     const itemHeight = firstItem ? firstItem.offsetHeight : 48;
@@ -1081,16 +1200,6 @@ async function pickThreeCategories() {
   generateBtn.disabled = true;
   generateBtn.textContent = '抽選中...';
 
-  // 1. 準備可供抽選的 12 個主要分類 (排除 'other_restaurant' 作為抽選選項以保持體驗優良)
-  const pool = FOOD_CATEGORY_DEFS.filter(c => c.id !== 'other_restaurant');
-  let results = [];
-  const poolCopy = pool.slice();
-
-  while (results.length < 3 && poolCopy.length > 0) {
-    const idx = Math.floor(Math.random() * poolCopy.length);
-    results.push(poolCopy.splice(idx, 1)[0]);
-  }
-
   try {
     activeCategoryEmoji.textContent = '🍜';
     activeCategoryTitle.textContent = '抽選中...';
@@ -1098,42 +1207,74 @@ async function pickThreeCategories() {
     activePlacesList.innerHTML = '<div class="empty-state">等待轉輪停止並加載美食資料...</div>';
     recommendationsList.innerHTML = '';
 
-    slotEls.forEach(el => el.classList.remove('is-final'));
+    // 1. 準備可供抽選的主要分類 (排除 'other_restaurant' 作為抽選選項以保持體驗優良)
+    const pool = getAvailableCategoryDefs().filter(c => c.id !== 'other_restaurant');
 
-    // 2. 播放拉霸動畫
-    await Promise.all([
-      spinReel(slotEls[0], pool, results[0], 1600),
-      spinReel(slotEls[1], pool, results[1], 2000),
-      spinReel(slotEls[2], pool, results[2], 2400)
-    ]);
+    // 2. 隨機抽出最多 3 個分類
+    let results = [];
+    const poolCopy = pool.slice();
+    while (results.length < 3 && poolCopy.length > 0) {
+      const idx = Math.floor(Math.random() * poolCopy.length);
+      results.push(poolCopy.splice(idx, 1)[0]);
+    }
 
-    slotEls[2].classList.add('is-final');
+    // 3. 只針對這 3 個分類搜尋店家資料
+    await Promise.allSettled(
+      results.map(async (category) => {
+        try {
+          const places = await searchPlacesByCategory(category.id, currentLocation.lat, currentLocation.lng);
+          category.places = randomizePlaces(places);
+        } catch (err) {
+          console.error(`Failed to fetch places for category ${category.id}:`, err);
+          category.places = [];
+        }
 
-    // 3. 針對這三個分類分別執行搜尋
-    const searches = await Promise.allSettled(
-      results.map((category) =>
-        searchPlacesByCategory(category.id, currentLocation.lat, currentLocation.lng)
-      )
+        // 同步更新至全域 foodCategories 狀態以利分析卡片連動與 preview
+        const targetCat = foodCategories.find(c => c.id === category.id);
+        if (targetCat) {
+          targetCat.places = category.places;
+        }
+      })
     );
+
+    slotEls.forEach(el => el.className = 'slot-card slot-empty');
+
+    // 4. 播放拉霸動畫 (只播放有結果的 slot)
+    const slotLabelNumbers = ['❶', '❷', '❸'];
+    const spinPromises = [];
+    slotEls.forEach((slotEl, idx) => {
+      const targetCat = results[idx];
+      if (targetCat) {
+        spinPromises.push(spinReel(slotEl, pool, targetCat, 1600 + idx * 400));
+      } else {
+        slotEl.className = 'slot-card slot-empty';
+        slotEl.innerHTML = `
+          <div class="slot-index">${slotLabelNumbers[idx]}</div>
+          <div class="slot-window">
+            <div class="slot-reel" style="transform: translate3d(0, 0, 0); transition: none;">
+              <div class="slot-reel-item">
+                <span class="slot-emoji">?</span>
+                <span class="slot-label">等待抽選</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    });
+
+    await Promise.all(spinPromises);
+
+    const lastActiveIdx = results.length - 1;
+    if (lastActiveIdx >= 0) {
+      slotEls[lastActiveIdx].classList.add('is-final');
+    }
 
     const debugReport = {
       categories: results,
       details: []
     };
 
-    results.forEach((category, index) => {
-      const isSuccess = searches[index].status === 'fulfilled';
-      const categoryPlaces = isSuccess ? searches[index].value : [];
-
-      // 六、讓每次結果不同
-      category.places = randomizePlaces(categoryPlaces);
-
-      // 同步更新至全域 foodCategories 狀態以利分析卡片連動與 preview
-      const targetCat = foodCategories.find(c => c.id === category.id);
-      if (targetCat) {
-        targetCat.places = category.places;
-      }
-
+    results.forEach((category) => {
       // 收集除錯資訊
       const cacheKey = getCategoryCacheKey(category.id, currentLocation.lat, currentLocation.lng);
       const isCached = categoryPlaceCache.get(cacheKey)?.fromCache || false;
@@ -1144,10 +1285,10 @@ async function pickThreeCategories() {
         label: category.label,
         requestTypes: config ? config.includedPrimaryTypes : [],
         fromCache: isCached,
-        rawCount: isSuccess ? categoryPlaces.length : 0, // 因為搜尋已包含過濾，所以回傳與過濾相同
+        rawCount: category.places.length,
         filteredCount: category.places.length,
         shuffled: true,
-        errorMessage: !isSuccess ? searches[index].reason?.message : null
+        errorMessage: null
       });
 
       // 重置 cache 中的 fromCache 旗標避免下次誤判
@@ -1164,7 +1305,7 @@ async function pickThreeCategories() {
     renderRecommendations();
     renderActiveCategory();
     renderAnalysisGrid();
-    renderSlots();
+    renderSlots(true);
 
     // 更新分析統計列
     const totalCount = foodCategories.reduce((acc, cat) => acc + cat.places.length, 0);
@@ -1175,7 +1316,7 @@ async function pickThreeCategories() {
   } finally {
     isSpinning = false;
     generateBtn.disabled = false;
-    generateBtn.textContent = '今晚吃什麼';
+    generateBtn.textContent = currentMealMode === 'lunch' ? '午餐吃什麼' : '今晚吃什麼';
   }
 }
 
@@ -1493,7 +1634,124 @@ function getCurrentPositionOnce() {
   });
 }
 
+function updateMealModeUI() {
+  const isLunch = currentMealMode === 'lunch';
+
+  const subtitle = document.querySelector('.hero .subtitle');
+  if (subtitle) {
+    subtitle.textContent = isLunch
+      ? '今天太陽好大!午餐吃什麼?'
+      : '哇!天怎麼黑了!晚餐吃什麼?';
+  }
+
+  document.title = isLunch
+    ? '午餐時間! | 今天太陽好大!午餐吃什麼?'
+    : '晚餐時間! | 哇!天怎麼黑了!晚餐吃什麼?';
+
+  document.body.dataset.mealMode = currentMealMode;
+
+  if (generateBtn && !isSpinning) {
+    generateBtn.textContent = isLunch ? '午餐吃什麼' : '今晚吃什麼';
+  }
+
+  const recTitle = document.querySelector('#recommendationsList')?.closest('.section')?.querySelector('.section-title h2');
+  if (recTitle) {
+    recTitle.textContent = isLunch ? '午餐推薦' : '今晚推薦';
+  }
+
+  if (!activeCategoryId) {
+    if (activeCategoryMeta) {
+      activeCategoryMeta.textContent = isLunch ? '請先按下「午餐吃什麼」' : '請先按下「今晚吃什麼」';
+    }
+    if (activePlacesList) {
+      const emptyDiv = activePlacesList.querySelector('.empty-state');
+      if (emptyDiv) {
+        emptyDiv.textContent = isLunch
+          ? '快呀!先按下「午餐吃什麼」吧。'
+          : '快呀!先按下「今晚吃什麼」吧。';
+      }
+    }
+  }
+
+  if (!selectedCategories.length && recommendationsList) {
+    const emptyDiv = recommendationsList.querySelector('.empty-state');
+    if (emptyDiv) {
+      emptyDiv.textContent = isLunch
+        ? '快呀!先按下「午餐吃什麼」。'
+        : '快呀!先按下「今晚吃什麼」。';
+    }
+  }
+
+  const footer = document.querySelector('.footer');
+  if (footer) {
+    footer.textContent = isLunch
+      ? 'Food Slots 午餐!就決定吃你了!!'
+      : 'Food Slots 晚餐!就決定吃你了!!!';
+  }
+}
+
+function syncMealModeTesterButtons() {
+  const buttons = document.querySelectorAll('[data-test-meal-mode]');
+  if (!buttons.length) {
+    return;
+  }
+
+  const activeMode = mealModeOverride === null ? 'auto' : mealModeOverride;
+
+  buttons.forEach((button) => {
+    button.classList.toggle(
+      'active',
+      button.dataset.testMealMode === activeMode
+    );
+  });
+}
+
+function applyMealMode(nextMode) {
+  if (nextMode === currentMealMode) {
+    updateMealModeUI();
+    syncMealModeTesterButtons();
+    return;
+  }
+
+  currentMealMode = nextMode;
+
+  updateMealModeUI();
+  syncMealModeTesterButtons();
+}
+
+function initMealModeTester() {
+  const buttons = document.querySelectorAll('[data-test-meal-mode]');
+  if (!buttons.length) {
+    return;
+  }
+
+  syncMealModeTesterButtons();
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const selectedMode = button.dataset.testMealMode;
+
+      if (selectedMode === 'auto') {
+        mealModeOverride = null;
+      } else if (
+        selectedMode === 'lunch' ||
+        selectedMode === 'default'
+      ) {
+        mealModeOverride = selectedMode;
+      } else {
+        return;
+      }
+
+      applyMealMode(getEffectiveMealMode());
+    });
+  });
+}
+
 function initApp() {
+  currentMealMode = getEffectiveMealMode();
+  updateMealModeUI();
+  initMealModeTester();
+
   foodCategories = createEmptyFoodCategories();
   bindInteractiveLists();
   renderAnalysisGrid();
@@ -1506,6 +1764,10 @@ function initApp() {
   debugTestBtn.addEventListener('click', runGooglePlacesDebugTest);
   requestLocation();
   runGooglePlacesDebugTest();
+
+  if (!refreshIntervalId) {
+    refreshIntervalId = setInterval(refreshMealModeByTime, 60 * 1000);
+  }
 }
 
 initApp();

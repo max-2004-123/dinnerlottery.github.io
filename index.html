@@ -3,12 +3,9 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-  >
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-  <title>Moon Slots | 讓月亮決定今晚吃什麼</title>
+  <title>今天吃什麼!!!</title>
 
   <link rel="icon" type="image/x-icon" href="./image/favicon.ico?v=4">
   <link rel="shortcut icon" type="image/x-icon" href="./image/favicon.ico?v=4">
@@ -23,7 +20,7 @@
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Moon Slots">
+  <meta name="apple-mobile-web-app-title" content="Food Slots">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0B1F4A">
 
@@ -34,10 +31,20 @@
 <body>
   <main class="app">
     <section class="hero">
-      <div class="eyebrow"><span class="dot"></span> FOOD SLOTS</div>
-      <h1>Moon Slots</h1>
-      <p class="subtitle">讓月亮決定今晚吃什麼</p>
+      <div class="eyebrow"></div>
+      <h1>Food Slots</h1>
+      <p class="subtitle">今天吃什麼!!!</p>
     </section>
+
+    <!-- DEV MEAL MODE TESTER START -->
+    <div class="meal-mode-tester" aria-label="模式測試工具">
+      <span class="meal-mode-tester__label">模式測試</span>
+      <button type="button" class="meal-mode-test-btn active" data-test-meal-mode="auto">自動</button>
+      <button type="button" class="meal-mode-test-btn" data-test-meal-mode="lunch">午餐</button>
+      <button type="button" class="meal-mode-test-btn" data-test-meal-mode="default">晚間</button>
+    </div>
+    <!-- DEV MEAL MODE TESTER END -->
+
 
     <section class="card section utility-hidden" aria-live="polite">
       <div class="section-title">
@@ -135,8 +142,7 @@
 
     <section class="card section">
       <div class="section-title">
-        <h2>Food Slots</h2>
-        <span>料理類型拉霸</span>
+        <h2>拉一個身價翻倍</h2>
       </div>
 
       <div class="slots-grid">
